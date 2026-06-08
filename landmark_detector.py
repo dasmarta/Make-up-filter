@@ -68,6 +68,9 @@ class FaceLandmarks:
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), indent=2)
 
+
+
+
 class FaceLandmarkDetector:
 
     def __init__(self, num_faces: int = 1, det_conf: float = 0.6, track_conf: float = 0.5):
@@ -119,29 +122,31 @@ class FaceLandmarkDetector:
 
         return result
 
-    def draw_debug(self, frame: np.ndarray, lm: FaceLandmarks) -> np.ndarray: # SAMO ZA TEST ZA DETEKCIJE
+    def draw_debug(self, frame: np.ndarray, lm: FaceLandmarks) -> np.ndarray: # za probu
+        
         if not lm.face_detected:
-            cv2.putText(frame, "Nema lica", (10, 30),
+            cv2.putText(frame, "Lice nije detektirano", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 60, 220), 2)
             return frame
 
-        overlay = frame.copy()
+  
+        mattes = self.create_alpha_matte(lm)
+        display = frame.copy()
 
-        def fill(pts, color):
-            if pts:
-                cv2.fillPoly(overlay, [np.array(pts, np.int32)], color)
+        
+        lip_color   = np.array([120, 130, 210], dtype=np.uint8)
+        cheek_color  = np.array([200, 180, 255], dtype=np.uint8)
+        eyebrow_color   = np.array([51, 36, 33], dtype=np.uint8)  
+        regions = [("lips", lip_color), ("cheeks", cheek_color), ("eyebrows", eyebrow_color)]
 
-        fill(lm.lips.pixel_points, (0, 0, 210))
+        for region_name, color in regions:
+            alpha = mattes[region_name].astype(float) / 255.0
+            alpha = np.expand_dims(alpha, axis=2)
+            display = (alpha * color + (1.0 - alpha) * display).astype(np.uint8)
 
-        fill(lm.left_cheek.pixel_points,  (147, 20, 255))
-        fill(lm.right_cheek.pixel_points, (147, 20, 255))
-
-        fill(lm.left_eyebrow.pixel_points,  (33, 36, 51))
-        fill(lm.right_eyebrow.pixel_points, (33, 36, 51))
-
-        frame = cv2.addWeighted(overlay, 0.40, frame, 0.60, 0)
-
-        cv2.putText(frame, "Landmark detekcija", (10, 28),
+        
+        
+        cv2.putText(display, "Alpha Matte + Konture", (10, 28),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
 
         legend = [
@@ -151,11 +156,121 @@ class FaceLandmarkDetector:
         ]
         for i, (label, color) in enumerate(legend):
             y = 55 + i * 22
-            cv2.rectangle(frame, (10, y - 12), (24, y + 2), color, -1)
-            cv2.putText(frame, label, (30, y),
+            cv2.rectangle(display, (10, y - 12), (24, y + 2), color, -1)
+            cv2.putText(display, label, (30, y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.50, (220, 220, 220), 1)
 
-        return frame
+        return display
+
+
+    def create_masks(self, lm: FaceLandmarks):
+        h = lm.frame_height
+        w = lm.frame_width
+
+        lips_mask = np.zeros((h, w), dtype=np.uint8)
+        cheeks_mask = np.zeros((h, w), dtype=np.uint8)
+        eyebrows_mask = np.zeros((h, w), dtype=np.uint8)
+
+        if not lm.face_detected:
+            return lips_mask, cheeks_mask, eyebrows_mask
+
+  
+        cv2.fillPoly(
+            lips_mask,
+            [np.array(lm.lips.pixel_points, np.int32)],
+            255
+        )
+
+
+        cv2.fillPoly(
+            cheeks_mask,
+            [np.array(lm.left_cheek.pixel_points, np.int32)],
+            255
+        )
+
+        cv2.fillPoly(
+            cheeks_mask,
+            [np.array(lm.right_cheek.pixel_points, np.int32)],
+            255
+        )
+
+        cv2.fillPoly(
+            eyebrows_mask,
+            [np.array(lm.left_eyebrow.pixel_points, np.int32)],
+            255
+        )
+
+        cv2.fillPoly(
+            eyebrows_mask,
+            [np.array(lm.right_eyebrow.pixel_points, np.int32)],
+            255
+        )
+
+        return lips_mask, cheeks_mask, eyebrows_mask
+    
+
+    def get_contours(self, lm: FaceLandmarks):
+        if not lm.face_detected:
+            return None
+
+        lips_mask, cheeks_mask, eyebrows_mask = self.create_masks(lm)
+
+        lips_contours, _ = cv2.findContours(
+            lips_mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        cheeks_contours, _ = cv2.findContours(
+            cheeks_mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+        eyebrows_contours, _ = cv2.findContours(
+            eyebrows_mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        return {
+            "lips": lips_contours,
+            "cheeks": cheeks_contours,
+            "eyebrows": eyebrows_contours
+        }
+    
+
+    def create_alpha_matte(self, lm: FaceLandmarks, blur_radius: int = 55):  # povećanjem blur_radius dobijemo mekše rubove maski, ali i gubitak detalja
+    
+        lips_mask, cheeks_mask, eyebrows_mask = self.create_masks(lm)
+
+        return {
+            "lips":    cv2.GaussianBlur(lips_mask, (blur_radius, blur_radius), 0),
+            "cheeks":   cv2.GaussianBlur(cheeks_mask, (blur_radius, blur_radius), 0),
+            "eyebrows": cv2.GaussianBlur(eyebrows_mask, (blur_radius, blur_radius), 0),
+           
+        }
+    
+
+    def evaluate_masks(self, lm: FaceLandmarks):
+        
+        if not lm.face_detected:
+            return {"status": "Nema lica", "metrics": {"lips": 0, "cheeks": 0, "eyebrows": 0}}
+
+        mattes = self.create_alpha_matte(lm, blur_radius=35)
+        
+        
+        lips_score = float(np.mean(mattes["lips"]))
+        cheeks_score = float(np.mean(mattes["cheeks"]))
+        eyebrows_score = float(np.mean(mattes["eyebrows"]))
+
+        return {
+            "status": "Uspjesno",
+            "metrics": {
+                "lips": round(lips_score, 2),
+                "cheeks": round(cheeks_score, 2),
+                "eyebrows": round(eyebrows_score, 2)
+            }
+        }
 
     def release(self):
         self._landmarker.close()

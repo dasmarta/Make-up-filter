@@ -13,7 +13,7 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT,  720)
 
-    print("Tipke: Q=izlaz, S=spremi JSON, D=debug")
+    print("Tipke: Q=izlaz, S=spremi JSON, D=izmjena prikaza (samo kamera / tvoj debug)")
 
     show_debug = True
     last_lm    = None
@@ -26,24 +26,37 @@ def main():
         frame = cv2.flip(frame, 1)
 
         lm = detector.process_frame(frame)
-        last_lm = lm # pamćenje
+        last_lm = lm
 
-        display = detector.draw_debug(frame, lm) if show_debug else frame.copy()
+        
+        if show_debug:
+            display = detector.draw_debug(frame, lm)
+        else:
+            display = frame.copy()
 
+        
+        if lm.face_detected:
+            evaluation = detector.evaluate_masks(lm)
+            metrics = evaluation["metrics"]
+            print(f"[EVALUACIJA MATTE-A] Usne: {metrics['lips']:.2f} | "
+                  f"Obrazi: {metrics['cheeks']:.2f} | "
+                  f"Obrve: {metrics['eyebrows']:.2f}    ", end="\r")
+
+    
         n += 1
         if time.time() - t0 >= 1.0:
             fps = n / (time.time() - t0)
             n, t0 = 0, time.time()
 
+     
         status = "LICE DETEKTIRANO" if lm.face_detected else "NEMA LICA"
         color  = (0, 220, 100) if lm.face_detected else (0, 60, 220)
         cv2.putText(display, status, (10, display.shape[0]-15),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, color, 2)
         cv2.putText(display, f"FPS: {fps:.1f}", (display.shape[1]-110, 30),
-
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
 
-        cv2.imshow("Osoba [Q=izlaz]", display)
+        cv2.imshow("Osoba 2 [Prikaz]", display)
 
         key = cv2.waitKey(1) & 0xFF
         if key in (ord('q'), 27):
@@ -53,16 +66,17 @@ def main():
                 fn = f"landmarks_{int(time.time())}.json"
                 with open(fn, 'w') as f:
                     f.write(last_lm.to_json())
-                print(f"SAVED {fn}")
+                print(f"\nSAVED {fn}")
             else:
-                print("Nema lica za snimanje.")
+                print("\nNema lica za snimanje.")
         elif key == ord('d'):
+            
             show_debug = not show_debug
 
     cap.release()
     detector.release()
     cv2.destroyAllWindows()
-    print("Kraj.")
+    print("\nKraj.")
 
 if __name__ == "__main__":
     main()
