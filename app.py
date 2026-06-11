@@ -66,3 +66,17 @@ camera = webrtc_streamer(
 if camera.video_processor:
     camera.video_processor.params = params
     camera.video_processor.enabled = enabled
+
+
+
+st.markdown(
+    """
+    <div style="text-align:center; color:gray; font-size:14px;">
+        Izradile: Marta Dasović, Katarina Rukavina, Ivona Pranjić, Marina Nedić<br>
+        Kolegij: Robotski vid<br>
+        Ak. godina: 2025./26.<br>
+        Mentorica: Petra Pejić
+    </div>
+    """,
+    unsafe_allow_html=True
+)
