@@ -1,13 +1,17 @@
 import av
 import cv2
 import streamlit as st
-from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
+from streamlit_webrtc import VideoProcessorBase, webrtc_streamer, RTCConfiguration
 
 from landmark_detector import FaceLandmarkDetector
 from makeup_renderer import (apply_makeup, MakeupParams, LIPS_PRESETS, BLUSH_PRESETS, EYEBROW_PRESETS,)
 
 
 st.title("Make-up filter")
+
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
 
 def show_preset_name(preset):
     return preset[0]
@@ -58,6 +62,7 @@ camera = webrtc_streamer(
     key="makeup-camera",
     video_processor_factory=MakeupProcessor,
     media_stream_constraints={"video": True, "audio": False},
+    rtc_configuration=RTC_CONFIGURATION,
 )
 
 if camera.video_processor:
